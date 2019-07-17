@@ -41,10 +41,10 @@ def rotateGrid(x, y, angle):
     return newx, newy
 #-----------------------
 
-def plotGrid(x, y, z, plotrange, plotColorbar=True, gridxspacing=None, phase=None, angle=None, noise=None):
-    h = plt.contourf(x,y,z)
-    plt.xlim(plotrange)
-    plt.ylim(plotrange)
+def plotGrid(axes, x, y, z, plotrange, plotColorbar=True, gridxspacing=None, phase=None, angle=None, noise=None):
+    h = axes.contourf(x,y,z)
+    axes.set_xlim(plotrange)
+    axes.set_ylim(plotrange)
     plt.gca().set_aspect('equal', adjustable='box')
     if plotColorbar:
         plt.colorbar()
@@ -60,7 +60,9 @@ def plotGrid(x, y, z, plotrange, plotColorbar=True, gridxspacing=None, phase=Non
         titlestring += ", phase {:}".format(phase)
         
     plt.title(titlestring)
-    plt.show()
+    #axes.plot([5,5],[1,7],color='black')
+    #plt.show()
+    
 #-----------------------
 
 # Sinusoids don't work with odd/even method:
@@ -76,7 +78,7 @@ def sinusoidal(values, spacing, phase):
     #plotGrid(xnew, ynew, z_sin, plotrange, False, gridxspacing, phase, angle, noise)
 
 #-----------------------
-def createHexGrid(gridxspacing, noise, angle, phase, resolution, gridrange, plotrange, coordMethod=1, plotFLAG=True):
+def createHexGrid(gridxspacing, noise, angle, phase, resolution, gridrange, plotrange, coordMethod=1, plotFLAG=True, axes=None):
     # This function will create a hexagonal lattice grid of gaussian blobs.
     # Inputs:
     # - parameters defining the grid properties
@@ -125,8 +127,20 @@ def createHexGrid(gridxspacing, noise, angle, phase, resolution, gridrange, plot
     
     # Plot the grid
     if plotFLAG:
-        plotGrid(xnew, ynew, z, plotrange, False, gridxspacing, phase, angle, noise)
+        #if axes is None:
+        #    axes = plt.gca()
+        plotGrid(axes, xnew, ynew, z, plotrange, False, gridxspacing, phase, angle, noise)
 
     return xnew, ynew, z
+
+#------------------------------------
+
+def findMaxPointCentre(z):
+    # This function finds the index of z ([m x m] activation map) corresponding to the centre of the most active grid cell
+    a = np.argmax(z,0)
+    m = np.amax(z,0)
+    xloc = np.argmax(m)
+    yloc = np.argmax(z[xloc])
+    return xloc, yloc
 
 #------------------------------------
