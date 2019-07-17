@@ -41,27 +41,26 @@ def rotateGrid(x, y, angle):
     return newx, newy
 #-----------------------
 
-def plotGrid(axes, x, y, z, plotrange, plotColorbar=True, gridxspacing=None, phase=None, angle=None, noise=None):
-    h = axes.contourf(x,y,z)
+def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing=None, phase=None, angle=None, noise=None):
+    axes.contourf(x,y,z)
     axes.set_xlim(plotrange)
     axes.set_ylim(plotrange)
     plt.gca().set_aspect('equal', adjustable='box')
     if plotColorbar:
         plt.colorbar()
     
-    titlestring = "Hex:"
+    titlestring = gridType
     if gridxspacing is not None:
-        titlestring += " spacing {:}".format(gridxspacing)
+        titlestring += " $\delta${:}".format(gridxspacing)
     if angle is not None:
-        titlestring += ", orient {:.1f}$^\circ$".format(math.degrees(angle))
+        titlestring += r", $\theta${:.0f}$^\circ$".format(math.degrees(angle))
     if noise is not None:
-        titlestring += ", noise {:}".format(noise)        
+        titlestring += ", $\sigma${:}".format(noise)        
     if phase is not None:
-        titlestring += ", phase {:}".format(phase)
+        titlestring += r", $\varphi${:}".format(phase)
         
-    plt.title(titlestring)
-    #axes.plot([5,5],[1,7],color='black')
-    #plt.show()
+    axes.title.set_text(titlestring)
+    # Note: pro-tip - do not call plt.show() inside a function, this stops the axes from being reusable outside of that function.
     
 #-----------------------
 
@@ -77,61 +76,30 @@ def sinusoidal(values, spacing, phase):
     #z_sin = z_sin_odd + z_sin_even
     #plotGrid(xnew, ynew, z_sin, plotrange, False, gridxspacing, phase, angle, noise)
 
-#-----------------------
-def createHexGrid(gridxspacing, noise, angle, phase, resolution, gridrange, plotrange, coordMethod=1, plotFLAG=True, axes=None):
-    # This function will create a hexagonal lattice grid of gaussian blobs.
-    # Inputs:
-    # - parameters defining the grid properties
-    # - 'coordMethod' determines whether any rotation is applied to the lattice by:
-    #    0:   rotating the x, y values (i.e. the whole coordinate system) OR
-    #    1:   (default, more intuitive and convenient) rotating the activation function z, and keeping x, y in cardinal coordinates.
-    # Outputs: the x, y, and z values for that map. (xnew, ynew are the final coordinate system)
-    # Notes: xZ, yZ, is the coordinate system that the z activation is calculated in (differs depending on coordMethod)
-    #        - this function extends the gridranges when defining grid centres, and imposes a maximum gridspacing to ensure we can always properly tile the entire gridrange
     
-    # Ensure that we can properly tile the entire gridrange with no gaps after rotation.
-    maxgridxspacing = 10
+#-----------------------
+
+def gridSpacingWarning(gridxspacing, maxgridxspacing):
+    # Ensure that we can properly tile the entire gridrange with no gaps after rotating the lattice.
     if gridxspacing >= maxgridxspacing:
         print("Error: you cannot define a grid spacing larger than {:}. Using maximum spacing value of {:} instead.".format(maxgridxspacing,maxgridxspacing))
         gridxspacing = maxgridxspacing
-        
-    # Extend the space of included x,y,z so that our map is definitely uniformly tiled after the rotation 
-    extgridrange = (gridrange[0] - maxgridxspacing, gridrange[1] + maxgridxspacing)  # (being safe)
-    
-    # Rotate the meshgrid x and y values to define the grid orientation (a new x',y' coordinate system)
-    values = np.linspace(gridrange[0], gridrange[1], resolution)
-    x, y = np.meshgrid(values, values) 
+    return gridxspacing
 
-    # Define the grid centres for the x- and y-dimension  (we will separate odd and even rows to create a hex grid)
-    gridyspacing = gridxspacing * math.sin(math.radians(60)) * 2                                     # y-space between odd rows 
-    gridxcentres_odd = np.arange(extgridrange[0]+phase, extgridrange[1], gridxspacing)              
-    gridycentres_odd = np.arange(extgridrange[0], extgridrange[1], gridyspacing)
-    gridxcentres_even = np.arange(extgridrange[0]+phase+gridxspacing/2, extgridrange[1], gridxspacing)  
-    gridycentres_even = np.arange(extgridrange[0]+gridyspacing/2, extgridrange[1], gridyspacing)
+#------------------------------------
 
-    # Rotate the grid using one of two methods (default: 1)
+def rotateWholeGrid(x,y, angle, coordMethod=1):
+    # This function rotates the meshgrid coordinates x,y for plotting and grid centre generation (not the same thing) by 'angle' using one of two methods.
     if coordMethod==0:
         # METHOD 0: rotate the entire meshgrid map to visualize the rotation clearly and have a new coordinate system, x',y'  (xnew, ynew)
         xZ, yZ = x, y     # (coordinate system that z activation is calculated in)
         xnew,ynew = rotateGrid(x,y,angle)
-
     else:
         # METHOD 1: rotate the underlying grid basis but keep our coordinates cardinal x,y
         xZ, yZ = rotateGrid(x,y,-angle)  
         xnew,ynew = x,y
     
-    # apply the hexagonal grid activation function to the z-values
-    z_odd = define1DGrid(xZ, gridxcentres_odd, noise, resolution) * define1DGrid(yZ, gridycentres_odd, noise, resolution)
-    z_even = define1DGrid(xZ, gridxcentres_even, noise, resolution) * define1DGrid(yZ, gridycentres_even, noise, resolution)
-    z = z_odd + z_even
-    
-    # Plot the grid
-    if plotFLAG:
-        #if axes is None:
-        #    axes = plt.gca()
-        plotGrid(axes, xnew, ynew, z, plotrange, False, gridxspacing, phase, angle, noise)
-
-    return xnew, ynew, z
+    return xZ, yZ, xnew, ynew
 
 #------------------------------------
 
@@ -142,5 +110,63 @@ def findMaxPointCentre(z):
     xloc = np.argmax(m)
     yloc = np.argmax(z[xloc])
     return xloc, yloc
+
+#------------------------------------
+
+def createGrid(gridAspacing, gridBspacing, alpha, noise, angle, phase, resolution, gridrange, plotrange, coordMethod=1):
+    # This function will create a lattice grid of gaussian blobs according to the gridA and gridB spacings (which are the two axes defining the grid), and alpha, the angle between them. Axis A maps onto the x-axis prior to rotation, but axis B does not necessarily map onto the y-axis (only does for alpha = 90).
+    # Inputs:
+    # - parameters defining the grid properties
+    # - 'coordMethod' determines whether any rotation is applied to the lattice by:
+    #    0:   rotating the x, y values (i.e. the whole coordinate system) OR
+    #    1:   (default, more intuitive and convenient) rotating the activation function z, and keeping x, y in cardinal coordinates.
+    # Outputs: the x, y, and z values for that map. (xnew, ynew are the final coordinate system)
+    # Notes: xZ, yZ, is the coordinate system that the z activation is calculated in (differs depending on coordMethod)
+    #        - this function extends the gridranges when defining grid centres, and imposes a maximum gridspacing to ensure we can always properly tile the entire gridrange
+    
+    # Define coordinates for our grid
+    values = np.linspace(gridrange[0], gridrange[1], resolution)
+    x, y = np.meshgrid(values, values) 
+    
+    # Ensure that we can properly tile the entire gridrange with no gaps after rotation.
+    maxgridAspacing = 10
+    gridAspacing = gridSpacingWarning(gridAspacing, maxgridAspacing)
+    gridBspacing = gridSpacingWarning(gridBspacing, maxgridAspacing)
+        
+    # Extend the space of included x,y,z so that our map is definitely uniformly tiled after the rotation 
+    extgridrange = (gridrange[0] - maxgridAspacing, gridrange[1] + maxgridAspacing)  # (being safe)
+    
+    # Define the grid centres for the x- and y-dimension  (we will separate odd and even rows to create a hex grid)
+    gridyspacing = gridBspacing * math.sin(math.radians(alpha)) * 2                                     # y-space (cartesian, not along axis B) between odd rows 
+    gridxcentres_odd = np.arange(extgridrange[0]+phase, extgridrange[1], gridAspacing)              
+    gridycentres_odd = np.arange(extgridrange[0], extgridrange[1], gridyspacing)
+    gridxcentres_even = np.arange(extgridrange[0]+phase+(gridAspacing*math.cos(math.radians(alpha))), extgridrange[1], gridAspacing)  
+    gridycentres_even = np.arange(extgridrange[0]+gridyspacing/2, extgridrange[1], gridyspacing)
+
+    # Rotate the grid (default method: 1)
+    xZ,yZ,xnew,ynew = rotateWholeGrid(x,y,angle,coordMethod)
+    
+    # Apply the hexagonal grid activation function to the z-values
+    z_odd = define1DGrid(xZ, gridxcentres_odd, noise, resolution) * define1DGrid(yZ, gridycentres_odd, noise, resolution)
+    z_even = define1DGrid(xZ, gridxcentres_even, noise, resolution) * define1DGrid(yZ, gridycentres_even, noise, resolution)
+    z = z_odd + z_even
+    
+    return xnew, ynew, z
+
+#------------------------------------
+
+def createHexGrid(gridxspacing, noise, angle, phase, resolution, gridrange, plotrange, coordMethod=1):
+    # Specify a special case (hexagonal) of a general grid lattice
+    return createGrid(gridxspacing, gridxspacing, 60, noise, angle, phase, resolution, gridrange, plotrange, coordMethod)
+#------------------------------------
+
+def createSquareGrid(gridxspacing, noise, angle, phase, resolution, gridrange, plotrange, coordMethod=1):
+    # Specify a special case (hexagonal) of a general grid lattice
+    return createGrid(gridxspacing, gridxspacing, 90, noise, angle, phase, resolution, gridrange, plotrange, coordMethod)
+
+#------------------------------------
+def createRectGrid(gridxspacing, gridyspacing, noise, angle, phase, resolution, gridrange, plotrange, coordMethod=1):
+    # Specify a special case (hexagonal) of a general grid lattice
+    return createGrid(gridxspacing, gridyspacing, 90, noise, angle, phase, resolution, gridrange, plotrange, coordMethod)
 
 #------------------------------------
