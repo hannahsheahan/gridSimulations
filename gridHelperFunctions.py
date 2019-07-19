@@ -14,6 +14,7 @@ import math
 import sys
 import time
 import random
+import copy
 # ---------------------------
 
 # Some useful functions
@@ -25,14 +26,16 @@ def gaussian(x, mu, sig):
 def define1DGrid(values, centres, noise, resolution):
     # - centres are the grid peaks
     # - values are the x-points and there are 'resolution' number of indices
-    wave = [0 for i in range(resolution)]
+    wave = np.zeros((resolution,resolution))
     for i in range(len(centres)):
         wave +=  gaussian(values, centres[i], noise) 
+        
     return wave
 #-----------------------
 
 def rotateGrid(x, y, angle):
     # rotate the meshgrid values
+    angle = math.radians(angle)
     newx = [None for i in range(len(x))]
     newy = [None for i in range(len(y))]
     for i in range(len(x)):
@@ -41,7 +44,7 @@ def rotateGrid(x, y, angle):
     return newx, newy
 #-----------------------
 
-def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing=None, phase=None, angle=None, noise=None):
+def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing=None, alpha=None, phase=None, angle=None, noise=None):
     axes.contourf(x,y,z)
     axes.set_xlim(plotrange)
     axes.set_ylim(plotrange)
@@ -52,8 +55,10 @@ def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing
     titlestring = gridType
     if gridxspacing is not None:
         titlestring += " $\delta${:}".format(gridxspacing)
+    if alpha is not None:
+        titlestring += r", $\alpha${:.0f}$^\circ$".format(alpha)
     if angle is not None:
-        titlestring += r", $\theta${:.0f}$^\circ$".format(math.degrees(angle))
+        titlestring += r", $\theta${:.0f}$^\circ$".format(angle)
     if noise is not None:
         titlestring += ", $\sigma${:}".format(noise)        
     if phase is not None:
@@ -144,7 +149,7 @@ def createGrid(gridAspacing, gridBspacing, alpha, noise, angle, phase, resolutio
     gridycentres_even = np.arange(extgridrange[0]+gridyspacing/2, extgridrange[1], gridyspacing)
 
     # Rotate the grid (default method: 1)
-    xZ,yZ,xnew,ynew = rotateWholeGrid(x,y,angle,coordMethod)
+    xZ,yZ,xnew,ynew = rotateWholeGrid(x,y,angle)
     
     # Apply the hexagonal grid activation function to the z-values
     z_odd = define1DGrid(xZ, gridxcentres_odd, noise, resolution) * define1DGrid(yZ, gridycentres_odd, noise, resolution)
@@ -152,6 +157,44 @@ def createGrid(gridAspacing, gridBspacing, alpha, noise, angle, phase, resolutio
     z = z_odd + z_even
     
     return xnew, ynew, z
+
+#------------------------------------
+
+def fitGridFunc(x, gridAspacing, gridBspacing, alpha, noise, angle, phase):
+    # This function will create a lattice grid of gaussian blobs according to the gridA and gridB spacings (which are the two axes defining the grid), and alpha, the angle between them. Axis A maps onto the x-axis prior to rotation, but axis B does not necessarily map onto the y-axis (only does for alpha = 90).
+    # Inputs:
+    # - parameters defining the grid properties
+    # - 'coordMethod' determines whether any rotation is applied to the lattice by:
+    #    0:   rotating the x, y values (i.e. the whole coordinate system) OR
+    #    1:   (default, more intuitive and convenient) rotating the activation function z, and keeping x, y in cardinal coordinates.
+    # Outputs: the x, y, and z values for that map. (xnew, ynew are the final coordinate system)
+    # Notes: xZ, yZ, is the coordinate system that the z activation is calculated in (differs depending on coordMethod)
+    #        - this function extends the gridranges when defining grid centres, and imposes a maximum gridspacing to ensure we can always properly tile the entire gridrange
+    #        - grid angles of  90°, 72°, 51.4° and 45°  correspond to 4-fold, 5-fold, 7-fold and 8-fold rotational symmetry
+    
+    gridrange = [-8,8]
+    resolution = 100
+    maxgridAspacing = 10
+    extgridrange = (gridrange[0] - maxgridAspacing, gridrange[1] + maxgridAspacing)  # (being safe)
+    
+    y = copy.deepcopy(x)
+    
+    # Define the grid centres for the x- and y-dimension  (we will separate odd and even rows to create a hex grid)
+    gridyspacing = gridBspacing * math.sin(math.radians(alpha)) * 2                                     # y-space (cartesian, not along axis B) between odd rows 
+    gridxcentres_odd = np.arange(extgridrange[0]+phase, extgridrange[1], gridAspacing)              
+    gridycentres_odd = np.arange(extgridrange[0], extgridrange[1], gridyspacing)
+    gridxcentres_even = np.arange(extgridrange[0]+phase+(gridAspacing*math.cos(math.radians(alpha))), extgridrange[1], gridAspacing)  
+    gridycentres_even = np.arange(extgridrange[0]+gridyspacing/2, extgridrange[1], gridyspacing)
+
+    # Rotate the grid (default method: 1)
+    xZ,yZ,xnew,ynew = rotateWholeGrid(x,y,angle)
+    
+    # Apply the hexagonal grid activation function to the z-values
+    z_odd = define1DGrid(xZ, gridxcentres_odd, noise, resolution) * define1DGrid(yZ, gridycentres_odd, noise, resolution)
+    z_even = define1DGrid(xZ, gridxcentres_even, noise, resolution) * define1DGrid(yZ, gridycentres_even, noise, resolution)
+    z = z_odd + z_even
+    
+    return z.ravel()*10000
 
 #------------------------------------
 
