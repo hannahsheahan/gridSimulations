@@ -10,6 +10,7 @@
 import numpy as np
 import scipy.stats as stats
 import matplotlib.pyplot as plt
+from scipy import optimize
 import math
 import sys
 import time
@@ -213,3 +214,67 @@ def createRectGrid(gridxspacing, gridyspacing, noise, angle, phase, resolution, 
     return createGrid(gridxspacing, gridyspacing, 90, noise, angle, phase, resolution, gridrange, plotrange, coordMethod)
 
 #------------------------------------
+
+def fitLattice(numiter, data, fitwhichparams, initparams, lowerbound=None, upperbound=None):
+    # This function (in theory) fits any 2D lattice to data.
+    # In practice, this is a very difficult numerical optimisation, it takes ages and often returns local 
+    # minima solutions even when searching over few parameters. 
+    # Should ONLY be used when search for one or two parameters max, and with high numiter to avoid local minima.
+    # Lattice parameters: gridAspacing, gridBspacing, alpha, noise, angle, phase
+    
+    start = time.time()
+    num_params = len(initparams)
+    fitted_params = np.zeros((numiter,num_params))
+    fitted_params.fill(np.nan)
+    fitted_SSE = np.zeros((numiter,1))
+    fitted_SSE.fill(np.nan)
+
+    # Define the default bounds. *Note that this way of defining defaults (vs in function def) is critical because defaults are defined only once in python, and if they are edited later in this script (they are) then this will affect their values in the next running of this script.
+    if lowerbound is None:
+        lowerbound = [1, 1, 0, 0, 0, 0]
+    if upperbound is None:
+         upperbound=[5, 5, 120, 5, 90, 5]
+    
+    # Format grid data for fitting and fit a grid function to it
+    resolution = data.shape[0]
+    gridrange = [-8,8]
+    values = np.linspace(gridrange[0], gridrange[1], resolution)
+    x,y = np.meshgrid(values, values) 
+    zdata = data.ravel()*10000
+
+    # Constrain the bound on the parameters we are not fitting
+    for p in range(len(fitwhichparams)):
+        if fitwhichparams[p]==0:
+            lowerbound[p] = initparams[p]
+            upperbound[p] = initparams[p] + 0.000000001
+
+    # Run the parameter optimisation several times from different initial conditions
+    print("Running optimisation...")        
+    for i in range(numiter):
+        
+        try:
+            params, params_covariance = optimize.curve_fit(fitGridFunc, x, zdata, p0=initparams, bounds=(lowerbound,upperbound))
+            SSE = sum((fitGridFunc(x, *params) - zdata)**2)
+            fitted_params[i] = params
+            fitted_SSE[i] = SSE
+        except RuntimeError:
+            print("\n Error: max number of fit iterations hit. Moving on...")
+
+        # display our optimisation iteration progress
+        j = (i + 1) / numiter
+        sys.stdout.write('\r')
+        sys.stdout.write("[%-20s] %d%% " % ('-'*int(20*j), 100*j))
+        sys.stdout.flush()
+        
+        # Randomise the initial parameter starting point for those we are fitting (first iteration will just use our guesses)
+        for p in range(len(fitwhichparams)):
+            if fitwhichparams[p]==1:
+                initparams[p] = random.uniform(lowerbound[p], upperbound[p])
+        
+    end = time.time()
+    print("\nOptimisation over {:} iterations took {:.0f} s".format(numiter,end-start))
+    return fitted_params, fitted_SSE
+
+#------------------------------------
+
+
