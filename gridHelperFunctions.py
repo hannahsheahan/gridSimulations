@@ -272,9 +272,95 @@ def fitLattice(numiter, data, fitwhichparams, initparams, lowerbound=None, upper
                 initparams[p] = random.uniform(lowerbound[p], upperbound[p])
         
     end = time.time()
-    print("\nOptimisation over {:} iterations took {:.0f} s".format(numiter,end-start))
+    print("\nOptimisation complete ({:} iterations, {:.0f} s)".format(numiter,end-start))
     return fitted_params, fitted_SSE
 
 #------------------------------------
 
+def fitNFoldModels(maxiter, folds, z, otherparams, plotFLAG=True):
+    # This function will fit n-fold symmetry lattice models to the data in z, given all the other parameters (otherparams) except angle and phase.
+    # Choose which n-fold models to test by specifying a list 'folds' e.g. [4,6,7,8]
+    # Fix the other parameters listed in otherparams (and provide a starting guess for the angle and phase) e.g. [3, 3, 90, 0.4, 0, 0]
+    # Lattice parameters: gridAspacing, gridBspacing, alpha, noise, angle, phase
+    # Note: the third parameter input to otherparams is meaningless because we fix this by the n-fold.
+    
+    nfoldSSE = np.zeros((len(folds),1))
+    nfoldSSE.fill(np.nan)
+    nfoldParams = np.zeros((len(folds),len(otherparams)))
+    nfoldParams.fill(np.nan)
+    
+    for i in range(len(folds)):
+        testfold = folds[i]
+        
+        # fit to the angle for this fold of symmetry
+        alpha = 360/testfold
+        guess_params = [otherparams[i] for i in range(len(otherparams))]
+        guess_params[2] = alpha
+        fitwhichparams=[0,0,0,0,1,1]
+        fitted_params, fitted_SSE = fitLattice(maxiter, z, fitwhichparams, guess_params)
 
+        # choose the best fit for this fold
+        opt_iter = np.nanargmin(fitted_SSE)
+        opt_params = fitted_params[opt_iter][:]
+        nfoldSSE[i] = fitted_SSE[opt_iter]
+        nfoldParams[i] = opt_params
+        str_params = ''.join("{:.2f}  ".format(e) for e in opt_params)
+        
+        print("Fitted params for {:}-fold symmetry: ".format(testfold)+str_params)
+        print("SSE: {:}".format(nfoldSSE[i]))
+        print("=======================")
+    
+    bestFold = np.argmin(nfoldSSE)
+    rankedFolds = ((np.argsort(nfoldSSE, axis=0)).flatten()).tolist()
+    print("Best n-fold models:")
+    for i in range(len(rankedFolds)):
+        print("{:}.  {:}-fold symmetry (SSE={:})".format(i+1, folds[rankedFolds[i]], nfoldSSE[rankedFolds[i]]))
+    print("=======================")
+    
+    if plotFLAG:
+        plt.figure(figsize=(3,3))
+        plt.plot(folds, nfoldSSE, 'x', color='blue', markeredgewidth=2, ms=10)
+        plt.plot(folds[bestFold], nfoldSSE[bestFold], 'x', color='deeppink', markeredgewidth=3, ms=12)
+        plt.ylabel('SSE of n-fold model fit')
+        plt.xlabel('n-fold symmetry model')
+        ax = plt.gca()
+        ax.set_xlim([1,10])
+        ax.set_ylim([np.min(nfoldSSE)*0.95,np.max(nfoldSSE)*1.05])
+    
+    return nfoldParams, nfoldSSE
+#------------------------------------
+
+def visualCompareGridModel(x, y, z, popt, gridrange, plotrange):
+    # Plot the actual data, and next to it data generated from the fitted model
+    # 'popt' is a list of parameters for each model ie [nmodels x nparams]
+    nmodels = len(popt)
+    f, ax = plt.subplots(1, nmodels+1)
+
+    # Actual data
+    plotGrid(ax[0], x, y, z, plotrange, "Actual data", False) 
+    ax[0].set_aspect('equal', adjustable='box')
+    ax[0].set_title("Actual data")
+    resolution = z.shape[0]
+
+    # Fitted model
+    for i in range(nmodels):
+        xfit,yfit,zfit = createGrid(*popt[i], resolution, gridrange, plotrange)
+        plotGrid(ax[i+1], xfit, yfit, zfit, plotrange, "Fitted", False) 
+        ax[i+1].set_aspect('equal', adjustable='box')
+        ax[i+1].set_title("Fitted model {:}".format(i+1))
+    return ax
+#------------------------------------
+
+def visualizeParameterFit(whichParam, fitted_params, fitted_SSE):
+    # Evaluate the fitting surface for a given parameter
+    plt.figure(figsize=(2.5,3))
+    p = [fitted_params[i][whichParam] for i in range(len(fitted_params))]
+    SSE = [fitted_SSE[i] for i in range(len(fitted_SSE))]
+    plt.plot(p, SSE, 'x')
+    plt.title("Fitting surface (each 'x' is one optimisation)")
+    plt.ylabel("SSE")
+    plt.xlabel("Parameter value")
+    ax = plt.gca()
+    return ax
+
+#------------------------------------
