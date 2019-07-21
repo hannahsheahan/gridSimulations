@@ -19,6 +19,15 @@ import copy
 # ---------------------------
 
 # Some useful functions
+
+
+#-----------------------
+def nanArray(size):
+    # create a numpy array of size 'size' (tuple) filled with nans
+    tmp = np.zeros(size)
+    tmp.fill(np.nan)
+    return tmp
+
 #-----------------------
 def gaussian(x, mu, sig):
     return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
@@ -225,10 +234,8 @@ def fitLattice(numiter, data, fitwhichparams, initparams, lowerbound=None, upper
     
     start = time.time()
     num_params = len(initparams)
-    fitted_params = np.zeros((numiter,num_params))
-    fitted_params.fill(np.nan)
-    fitted_SSE = np.zeros((numiter,1))
-    fitted_SSE.fill(np.nan)
+    fitted_params = nanArray((numiter,num_params))
+    fitted_SSE = nanArray((numiter,1))
 
     # Define the default bounds. *Note that this way of defining defaults (vs in function def) is critical because defaults are defined only once in python, and if they are edited later in this script (they are) then this will affect their values in the next running of this script.
     if lowerbound is None:
@@ -285,10 +292,8 @@ def fitNFoldModels(maxiter, folds, z, otherparams, plotFLAG=True):
     # Lattice parameters: gridAspacing, gridBspacing, alpha, noise, angle, phase
     # Note: the third parameter input to otherparams is meaningless because we fix this by the n-fold.
     
-    nfoldSSE = np.zeros((len(folds),1))
-    nfoldSSE.fill(np.nan)
-    nfoldParams = np.zeros((len(folds),len(otherparams)))
-    nfoldParams.fill(np.nan)
+    nfoldSSE = nanArray((len(folds),1))
+    nfoldParams = nanArray((len(folds),len(otherparams)))
     
     for i in range(len(folds)):
         testfold = folds[i]
@@ -381,5 +386,60 @@ def angle_between(v1, v2):
     v1_u = unit_vector(v1)
     v2_u = unit_vector(v2)
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+#------------------------------------
+
+def aggregateBresenhamLine(z, start, end):
+    """ Use the Bresenham Line Drawing Algorithm to determine which cells on the path from x1,y1 to x2,y2
+    should be considered 'traversed'. The activity in matrix z of the chosen cell indices is integrated
+    to form an aggregate across the 'path'.
+    
+    Edited from source: http://itsaboutcs.blogspot.com/2015/04/bresenhams-line-drawing-algorithm.html """
+    
+    aggregateActivity = 0
+    nCellsTraversed = 0
+    drawing = np.copy(z)
+    drawing.fill(0)
+    
+    x1, y1 = start
+    x2, y2 = end
+    
+    dx = abs(x2 - x1)
+    dy = abs(y2 - y1)
+    slope = dy/float(dx)
+    
+    x, y = x1, y1   
+ 
+    # checking the slope if slope > 1 
+    # then interchange the role of x and y
+    if slope > 1:
+        dx, dy = dy, dx
+        x, y = y, x
+        x1, y1 = y1, x1
+        x2, y2 = y2, x2
+ 
+    # initialization of the inital disision parameter
+    p = 2 * dy - dx
+    
+    # Record the activity at this point and increment cell counter
+    aggregateActivity += z[x,y]
+    nCellsTraversed += 1
+    drawing[x,y] = 1
+
+    for k in range(2, dx):
+        if p > 0:
+            y = y + 1 if y < y2 else y - 1
+            p = p + 2*(dy - dx)
+        else:
+            p = p + 2*dy
+ 
+        x = x + 1 if x < x2 else x - 1
+        
+        # Record the activity at this point and increment cell counter
+        aggregateActivity += z[x,y]
+        nCellsTraversed += 1
+        drawing[x,y] = 1
+    
+    return aggregateActivity, nCellsTraversed, drawing
 
 #------------------------------------
