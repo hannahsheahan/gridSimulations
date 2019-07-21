@@ -49,7 +49,7 @@ def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing
     axes.contourf(x,y,z)
     axes.set_xlim(plotrange)
     axes.set_ylim(plotrange)
-    plt.gca().set_aspect('equal', adjustable='box')
+    axes.set_aspect('equal', adjustable='box')
     if plotColorbar:
         plt.colorbar()
     
@@ -66,6 +66,7 @@ def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing
         titlestring += r", $\varphi${:}".format(phase)
         
     axes.title.set_text(titlestring)
+    axes.axis('off')
     # Note: pro-tip - do not call plt.show() inside a function, this stops the axes from being reusable outside of that function.
     
 #-----------------------
@@ -330,7 +331,21 @@ def fitNFoldModels(maxiter, folds, z, otherparams, plotFLAG=True):
     return nfoldParams, nfoldSSE
 #------------------------------------
 
-def visualCompareGridModel(x, y, z, popt, gridrange, plotrange):
+def visualizeParameterFit(whichParam, fitted_params, fitted_SSE):
+    # Evaluate the fitting surface for a given parameter
+    plt.figure(figsize=(2.5,3))
+    p = [fitted_params[i][whichParam] for i in range(len(fitted_params))]
+    SSE = [fitted_SSE[i] for i in range(len(fitted_SSE))]
+    plt.plot(p, SSE, 'x')
+    plt.title("Fitting surface (each 'x' is one optimisation)")
+    plt.ylabel("SSE")
+    plt.xlabel("Parameter value")
+    ax = plt.gca()
+    return ax
+
+#------------------------------------
+
+def visualCompareGridModels(x, y, z, popt, gridrange, plotrange):
     # Plot the actual data, and next to it data generated from the fitted model
     # 'popt' is a list of parameters for each model ie [nmodels x nparams]
     nmodels = len(popt)
@@ -348,19 +363,23 @@ def visualCompareGridModel(x, y, z, popt, gridrange, plotrange):
         plotGrid(ax[i+1], xfit, yfit, zfit, plotrange, "Fitted", False) 
         ax[i+1].set_aspect('equal', adjustable='box')
         ax[i+1].set_title("Fitted model {:}".format(i+1))
+        ax[i+1].axis('off')
     return ax
 #------------------------------------
 
-def visualizeParameterFit(whichParam, fitted_params, fitted_SSE):
-    # Evaluate the fitting surface for a given parameter
-    plt.figure(figsize=(2.5,3))
-    p = [fitted_params[i][whichParam] for i in range(len(fitted_params))]
-    SSE = [fitted_SSE[i] for i in range(len(fitted_SSE))]
-    plt.plot(p, SSE, 'x')
-    plt.title("Fitting surface (each 'x' is one optimisation)")
-    plt.ylabel("SSE")
-    plt.xlabel("Parameter value")
-    ax = plt.gca()
-    return ax
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+#------------------------------------
+
+def angle_between(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+            >>> angle_between((1, 0, 0), (0, 1, 0))
+        Source: https://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
+    """
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 #------------------------------------
