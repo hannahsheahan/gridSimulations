@@ -81,18 +81,17 @@ def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing
 #-----------------------
 
 # Sinusoids don't work with odd/even method:
-def sinusoidal(values, spacing, phase):
+def sinusoidal(x, A, spacing, phase, yoffset):
     # NOTE: this is not used (and shouldnt be, because defining sinusoids over odd and even rows stretches grid in y-axis)
     f = 1/spacing
-    return 0.5*np.sin(2 * np.pi * f * values + phase)+0.5
+    return A*np.sin(2*np.pi*f*x + phase)+yoffset
 
-    # An illustration of how defining sinusoids over even and odd rows will stretch your grid in the y-axis
-    #z_sin_odd = sinusoidal(x, gridxspacing, 0) * sinusoidal(y, gridyspacing, 0)
-    #z_sin_even = sinusoidal(x, gridxspacing, 0+gridxspacing/2) * sinusoidal(y, gridyspacing, gridyspacing/2)
-    #z_sin = z_sin_odd + z_sin_even
-    #plotGrid(xnew, ynew, z_sin, plotrange, False, gridxspacing, phase, angle, noise)
+# An illustration of how defining sinusoids over even and odd rows will stretch your grid in the y-axis
+#z_sin_odd = sinusoidal(x, 0.5, gridxspacing, 0, 0.5) * sinusoidal(y, 0.5, gridyspacing, 0, 0.5)
+#z_sin_even = sinusoidal(x, 0.5, gridxspacing, 0+gridxspacing/2, 0.5) * sinusoidal(y, 0.5, gridyspacing, gridyspacing/2, 0.5)
+#z_sin = z_sin_odd + z_sin_even
+#plotGrid(xnew, ynew, z_sin, plotrange, False, gridxspacing, phase, angle, noise)
 
-    
 #-----------------------
 
 def gridSpacingWarning(gridxspacing, maxgridxspacing):
