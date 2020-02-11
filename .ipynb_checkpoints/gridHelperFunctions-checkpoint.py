@@ -82,10 +82,15 @@ def plotGrid(axes, x, y, z, plotrange, gridType, plotColorbar=True, gridxspacing
 
 # Sinusoids don't work with odd/even method:
 def sinusoidal(x, A, spacing, phase, yoffset):
-    # NOTE: this is not used (and shouldnt be, because defining sinusoids over odd and even rows stretches grid in y-axis)
-    f = 1/spacing
-    return A*np.sin(2*np.pi*f*x + phase)+yoffset
-
+    f = 1.0/spacing
+    y = A*np.sin(2*np.pi*f*x + math.radians(phase))+yoffset
+    try:
+        np.asarray_chkfinite(y)
+    except ValueError:
+        print("Parameters yielded nan or inf sin output: {:.3f} {:.3f} {:.3f} {:.3f}".format(A, spacing, phase, yoffset))
+        print(np.isnan(y))
+    return y
+    
 # An illustration of how defining sinusoids over even and odd rows will stretch your grid in the y-axis
 #z_sin_odd = sinusoidal(x, 0.5, gridxspacing, 0, 0.5) * sinusoidal(y, 0.5, gridyspacing, 0, 0.5)
 #z_sin_even = sinusoidal(x, 0.5, gridxspacing, 0+gridxspacing/2, 0.5) * sinusoidal(y, 0.5, gridyspacing, gridyspacing/2, 0.5)
@@ -440,5 +445,150 @@ def aggregateBresenhamLine(z, start, end):
         drawing[x,y] = 1
     
     return aggregateActivity, nCellsTraversed, drawing
+
+#------------------------------------
+
+def sampleUniformCircle(radius, centre):
+    # This function will generate a uniform random sample from a 2d circular space
+    # source:  https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly
+    
+    # first sample in polar coordinates for simplicity then convert to cartesian
+    r = radius * math.sqrt(random.uniform(0,1))
+    theta = random.uniform(0,1) * 2 * np.pi
+    x = centre[0] + r * math.cos(theta)
+    y = centre[1] + r * math.sin(theta)
+    
+    # bastardise the algorithm in this last line by converting to integers so they are valid indices (its a small approximation!)
+    return np.asarray([int(x),int(y)])
+
+#------------------------------------
+
+def sampleTrajectoriesSquare(numSamples, resolution, zdata, x, y, plotFLAG=True):
+    ref_vector = [1, 0]                    # measuring angles CCW from +ve x-axis
+    distances  = nanArray((numSamples,1))
+    angles     = nanArray((numSamples,1))
+    netActivity = nanArray((numSamples,1))
+    numCells    = nanArray((numSamples,1))
+    drawing = np.copy(zdata)
+    drawing.fill(0)
+
+    for sample in range(numSamples):
+        sample_start = np.asarray([ random.randrange(0,resolution), random.randrange(0,resolution) ]) # random index on grid
+        sample_end   = np.asarray([ random.randrange(0,resolution), random.randrange(0,resolution) ])
+        sample_vect  = sample_end - sample_start
+        vect_angle   =  math.degrees(angle_between(ref_vector, sample_vect))
+        vect_dist    = np.linalg.norm(sample_vect)
+
+        # Use Bresenham's line algorithm to determine which discrete cells of z are traversed on this path
+        aggrActivity, nCellsTraversed, nextline = aggregateBresenhamLine(zdata, sample_start, sample_end)
+
+        distances[sample] = vect_dist
+        angles[sample] = vect_angle
+        netActivity[sample] = aggrActivity
+        numCells[sample] = nCellsTraversed
+        drawing += nextline
+
+    if plotFLAG:
+        plt.figure()
+        plt.contourf(x,y,drawing)
+        axes = plt.gca()
+        axes.set_aspect('equal', adjustable='box')
+        axes.axis('off')
+        axes.set_title('Discrete cell traversals')
+    
+    return distances, angles, netActivity, numCells
+
+#------------------------------------
+
+def sampleTrajectoriesCircle(numSamples, resolution, zdata, x, y, plotFLAG=True):
+    ref_vector = [1, 0]                    # measuring angles CCW from +ve x-axis
+    distances  = nanArray((numSamples,1))
+    angles     = nanArray((numSamples,1))
+    netActivity = nanArray((numSamples,1))
+    numCells    = nanArray((numSamples,1))
+    drawing = np.copy(zdata)
+    drawing.fill(0)
+    
+    
+    f, ax = plt.subplots(1,2)
+    
+    for sample in range(numSamples):
+        
+        # sample uniformly in a circle
+        radius = resolution/2
+        centre = (resolution/2, resolution/2)       # centre coordinate of the circle
+        sample_start = sampleUniformCircle(radius, centre) # random index on grid
+        sample_end   = sampleUniformCircle(radius, centre)
+        sample_vect  = sample_end - sample_start
+        vect_angle   =  math.degrees(angle_between(ref_vector, sample_vect))
+        vect_dist    = np.linalg.norm(sample_vect)
+
+        # Use Bresenham's line algorithm to determine which discrete cells of z are traversed on this path
+        aggrActivity, nCellsTraversed, nextline = aggregateBresenhamLine(zdata, sample_start, sample_end)
+
+        distances[sample] = vect_dist
+        angles[sample] = vect_angle
+        netActivity[sample] = aggrActivity
+        numCells[sample] = nCellsTraversed
+        drawing += nextline
+        
+        # plot start point distribution
+        ax[0].scatter(sample_start[0], sample_start[1], alpha=0.1)
+        
+        ax[1].scatter(sample_end[0], sample_end[1], alpha=0.1)
+
+    
+    ax[0].axis('equal')
+    ax[0].set_title('Sampled start locations')
+    ax[1].axis('equal')
+    ax[1].set_title('Sampled end locations')
+    
+    if plotFLAG:
+        plt.figure()
+        plt.contourf(x,y,drawing)
+        axes = plt.gca()
+        axes.set_aspect('equal', adjustable='box')
+        axes.axis('off')
+        axes.set_title('Discrete cell traversals')
+    
+    return distances, angles, netActivity, numCells
+
+#------------------------------------
+
+def fitSinusoidalModels(data, numiter, initparams):
+    # Fit sinusoid models to the traversal data to see what periodicity pops out (should tell us n-fold according to the Constantinescu paper...)
+
+    start = time.time()
+    lowerbound = [0, 10**-5, 0, 0]
+    upperbound = [np.max(data), 360, 360, np.max(data)]
+    
+    num_params = len(initparams)
+    fitted_params = nanArray((numiter,num_params))
+    fitted_SSE = nanArray((numiter,1))
+    x = np.linspace(0,180,len(data))
+    
+    for i in range(numiter):
+        
+        try:
+            params, params_covariance = optimize.curve_fit(sinusoidal, x, data, p0=initparams, bounds=(lowerbound,upperbound))
+            SSE = sum((sinusoidal(x, *params) - data)**2)
+            fitted_params[i] = params
+            fitted_SSE[i] = SSE
+        except RuntimeError:
+            print("\n Error: max number of fit iterations hit. Moving on...")
+
+         # display our optimisation iteration progress
+        j = (i + 1) / numiter
+        sys.stdout.write('\r')
+        sys.stdout.write("[%-20s] %d%% " % ('-'*int(20*j), 100*j))
+        sys.stdout.flush()
+        
+        # Randomise the initial parameter starting point for those we are fitting (first iteration will just use our guesses)
+        for p in range(len(initparams)):
+            initparams[p] = random.uniform(lowerbound[p],upperbound[p])
+    
+    end = time.time()
+    print("\nOptimisation complete ({:} iterations, {:.0f} s)".format(numiter,end-start))
+    return fitted_params, fitted_SSE
 
 #------------------------------------
